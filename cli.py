@@ -92,7 +92,8 @@ def main():
     navpass = set_nav_passwd()
 
     timestamp = datetime.utcnow().strftime('%Y-%m-%d-%H.%M.%S.%f')
-    docker_name = 'docker-%s' % timestamp
+    #docker_name = 'docker-%s' % timestamp
+    docker_name = 'docker2'
     mount_point = '/%s-mount' % docker_name
     loop_file = '/dmcrypt/%s-loop' % docker_name
     docker_lib = '/dmcrypt/lib/%s' % docker_name
@@ -101,7 +102,8 @@ def main():
     docker_pid = '%s/%s.pid' % (docker_run, docker_name)
     #docker_bridge = '%s-bridge' % docker_name
     docker_bridge = 'docker0'
-    dockerd = '/usr/bin/dockerd-%s' % timestamp
+    #dockerd = '/usr/bin/dockerd-%s' % timestamp
+    dockerd = '/usr/bin/dockerd2'
     docker = '/usr/bin/docker -H %s ' % docker_sock
     device = utils.simple_popen(['losetup', '-f'])[0].rstrip()
     category = '@%s-mount' % docker_name
@@ -156,7 +158,7 @@ def main():
         logging.error('Something went wrong with the nav move command')
         sys.exit(1)
 
-    sleep(5) # Sleep 5 seconds so move command can complete
+    sleep(20) # Sleep 5 seconds so move command can complete
 
     if navlib.nav_encrypt(navpass, category, docker_run, mount_point, logfile=navlog):
         text = 'Nav encrypt of %s complete' % docker_run
@@ -165,7 +167,7 @@ def main():
         logging.error('Something went wrong with the nav move command')
         sys.exit(1)
 
-    sleep(5) # Sleep 5 seconds so move command can complete
+    sleep(20) # Sleep 5 seconds so move command can complete
 
     if navlib.nav_acl_add(navpass, acl_rule, logfile=navlog):
         text = 'Nav acl rule added %s' % acl_rule
