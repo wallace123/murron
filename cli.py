@@ -3,6 +3,7 @@ import os
 import sys
 import getpass
 import logging
+import subprocess
 from datetime import datetime
 from time import sleep
 
@@ -108,7 +109,7 @@ def main():
     device = utils.simple_popen(['losetup', '-f'])[0].rstrip()
     category = '@%s-mount' % docker_name
     acl_rule = 'ALLOW %s * %s' % (category, dockerd)
-    dockerd_cmd = '%s --bridge=%s --exec-root=%s -g %s -H %s '\
+    dockerd_cmd = 'nohup %s --bridge=%s --exec-root=%s -g %s -H %s '\
                   '-p %s --storage-driver=devicemapper' % (dockerd, docker_bridge, docker_run,
                                                            docker_lib, docker_sock, docker_pid)
 
@@ -177,11 +178,36 @@ def main():
     logging.info('Starting docker daemon')
     cmdlist = dockerd_cmd.split()
     print cmdlist
-    output, errors = utils.simple_popen(cmdlist)
-    text = '\nOutput: %s\nErrors: %s' % (output, errors) 
-    logging.debug(text)
+    proc = subprocess.Popen(cmdlist,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            preexec_fn=os.setpgrp,
+                           ).pid
+    logging.debug('proc: %s' % proc)
 
+    sleep(10) # Sleep so dockerd can finish starting
     print 'Check dockerd'
+
+    if image == 'wallace123/docker-vnc':
+        docker_cmd = '%s run -d -p 5900 --name docker-vnc -e VNCPASS="%s" -v /etc/hosts:/etc/hosts:ro '\
+                     '-v /etc/resolv.conf:/etc/resolv.conf:ro %s' % (docker, vncpass, image)
+        cmdlist = docker_cmd.split()
+        print cmdlist
+        output, errors = utils.simple_popen(cmdlist)
+        text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
+        logging.debug(text)
+
+        docker_cmd = '%s port docker-vnc' % docker
+        cmdlist = docker_cmd.split()
+        print cmdlist
+        output, errors = utils.simple_popen(cmdlist)
+        text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
+        logging.debug(text)
+        port_output = output.split(':')
+        port = port_output[1]
+        logging.info('VNC port: %s' % port)
+    else:
+        print 'Update for other containers'
 
 
 if __name__ == '__main__':
