@@ -168,9 +168,50 @@ def start_vnc(docker, vncpass):
     """ Starts up the docker-vnc image """
     image = 'wallace123/docker-vnc'
     docker_cmd = '%s run -d -p 5900 --name docker-vnc -e VNCPASS=%s -v /etc/hosts:/etc/hosts:ro '\
-                     '-v /etc/resolv.conf:/etc/resolv.conf:ro %s' % (docker, vncpass, image)
+                 '-v /etc/resolv.conf:/etc/resolv.conf:ro %s' % (docker, vncpass, image)
     cmdlist = docker_cmd.split()
     logging.info('Starting docker-vnc image')
+    output, errors = utils.simple_popen(cmdlist)
+    text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
+    logging.debug(text)
+
+    docker_cmd = '%s port docker-vnc' % docker
+    cmdlist = docker_cmd.split()
+    output, errors = utils.simple_popen(cmdlist)
+    text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
+    logging.debug(text)
+    port_output = output.split(':')
+    port = port_output[1]
+    text = 'VNC port: %s' % port
+    logging.info(text)
+
+    return port
+
+
+def start_whale(docker):
+    """ Starts up the docker-whale image """
+    image = 'wallace123/docker-whale'
+    docker_cmd = '%s run -d --name docker-whale %s' % (docker, image)
+    cmdlist = docker_cmd.split()
+    logging.info('Starting docker-whale image')
+    output, errors = utils.simple_popen(cmdlist)
+    text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
+    logging.debug(text)
+
+    return output
+
+
+def start_jabber(docker, jabber_ip, user1, pass1, user2, pass2):
+    """ Starts up the jabber server """
+    image = 'wallace123/docker-jabber'
+    docker_cmd = '%s run -d -p 5222 --name docker-jabber -e JHOST=%s -e USER1=%s '\
+                 '-e PASS1=%s -e USER2=%s -e PASS2=%s -v /etc/hosts:/etc/hosts:ro '\
+                 '-v /etc/resolv.conf:/etc/resolv.conf:ro %s' % (docker, jabber_ip,
+                                                                 user1, pass1,
+                                                                 user2, pass2,
+                                                                 image)
+    cmdlist = docker_cmd.split()
+    logging.info('Starting docker-jabber image')
     output, errors = utils.simple_popen(cmdlist)
     text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
     logging.debug(text)
@@ -252,8 +293,14 @@ def main():
     if image == 'wallace123/docker-vnc':
         vncpass = set_vnc_passwd()
         start_vnc(docker, vncpass)
+    elif image == 'wallace123/docker-whale':
+        output = start_whale(docker)
+        logging.info(output)
+    elif image == 'wallace123/docker-jabber':
+        jabber_ip, user1, pass1, user2, pass2 = set_jabber_vars()
+        start_jabber(docker, jabber_ip, user1, pass1, user2, pass2)
     else:
-        print 'Update for other containers'
+        logging.error('Unsupported image')
 
 
 if __name__ == '__main__':
