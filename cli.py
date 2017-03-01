@@ -12,15 +12,17 @@ try:
     from navlib import navlib
     from pyutils import utils
     from pyutils import loggerinitializer
+    import netifaces as ni
 except ImportError:
-    print 'navlib, utils, or loggerinitializer could not be imported.\n'\
+    print 'navlib, utils, loggerinitializer, or netifaces could not be imported.\n'\
           'Do git clone https://github.com/wallace123/navlib.git.\n'\
-          'Do git clone https://github.com/wallace123/pyutils.git.\n'
+          'Do git clone https://github.com/wallace123/pyutils.git.\n'\
+          'Do pip install netifaces.\n'
     sys.exit(1)
 
 # Globals
 loggerinitializer.initialize_logger('./logs/cli.log')
-IMAGES = ['wallace123/docker-vnc', 'wallace123/docker-whale', 'wallace123/docker-jabber']
+IMAGES = ['wallace123/docker-vnc', 'wallace123/docker-jabber']
 
 
 def set_nav_passwd():
@@ -77,10 +79,10 @@ def set_jabber_vars():
     return jabber_ip, user1, pass1, user2, pass2
 
 
-def create_lib_run_dirs(timestamp):
+def create_lib_run_dirs(rand_int):
     """ Creates the lib and run dirs for docker daemon """
-    lib = '/dmcrypt/lib/docker-%s' % timestamp
-    run = '/dmcrypt/run/docker-%s' % timestamp
+    lib = '/dmcrypt/lib/docker-%s' % rand_int
+    run = '/dmcrypt/run/docker-%s' % rand_int
     cmdlist = ['mkdir', '-p', lib, run]
     utils.simple_popen(cmdlist)
     text = 'Created directories:\n\t%s\n\t%s' % (lib, run)
@@ -89,9 +91,9 @@ def create_lib_run_dirs(timestamp):
     return lib, run
 
 
-def create_loop_file(timestamp):
+def create_loop_file(rand_int):
     """ Creates a 2G loop file for nav mounting """
-    loop_file = '/dmcrypt/docker-%s-loop' % timestamp
+    loop_file = '/dmcrypt/docker-%s-loop' % rand_int
     cmdlist = ['dd', 'if=/dev/zero', 'of=%s' % loop_file, 'bs=1M', 'count=2048']
     utils.simple_popen(cmdlist)
     text = 'Created file for loop device:\n\t%s' % (loop_file)
@@ -100,9 +102,9 @@ def create_loop_file(timestamp):
     return loop_file
 
 
-def create_mount_point(timestamp):
+def create_mount_point(rand_int):
     """ Creates the mountpoint for nav mounting """
-    mount_point = '/docker-%s-mount' % timestamp
+    mount_point = '/docker-%s-mount' % rand_int
     cmdlist = ['mkdir', '-p', mount_point]
     utils.simple_popen(cmdlist)
     text = 'Created directory:\n\t%s' % mount_point
@@ -111,9 +113,9 @@ def create_mount_point(timestamp):
     return mount_point
 
 
-def copy_dockerd(timestamp):
+def copy_dockerd(rand_int):
     """ Copies /usr/bin/dockerd to /usr/bin/dockerd-<timestamp> """
-    dockerd = '/usr/bin/dockerd-%s' % timestamp
+    dockerd = '/usr/bin/dockerd-%s' % rand_int
     cmdlist = ['cp', '/usr/bin/dockerd', dockerd]
     utils.simple_popen(cmdlist)
     text = 'Copied new dockerd:\n\t%s' % dockerd
@@ -164,6 +166,31 @@ def run_nav(navpass, loop_file, mount_point, lib, run, dockerd):
     return device, acl_rule
 
 
+def set_bridge(rand_int):
+    """ Sets the bridge interface for dockerd """
+    docker_bridge = 'docker%d' % rand_int
+
+    cmdlist = ['brctl', 'addbr', docker_bridge]
+    output, errors = utils.simple_popen(cmdlist)
+    text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
+    logging.debug(text)
+
+    cmdlist = ['ip', 'addr', 'add', '172.18.1.1/30', 'dev', docker_bridge]
+    output, errors = utils.simple_popen(cmdlist)
+    text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
+    logging.debug(text)
+
+    cmdlist = ['ip', 'link', 'set', 'dev', docker_bridge, 'up']
+    output, errors = utils.simple_popen(cmdlist)
+    text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
+    logging.debug(text)
+
+    text = 'Created bridge: %s' % docker_bridge
+    logging.info(text)
+
+    return docker_bridge
+
+
 def start_vnc(docker, vncpass):
     """ Starts up the docker-vnc image """
     image = 'wallace123/docker-vnc'
@@ -188,35 +215,21 @@ def start_vnc(docker, vncpass):
     return port
 
 
-def start_whale(docker):
-    """ Starts up the docker-whale image """
-    image = 'wallace123/docker-whale'
-    docker_cmd = '%s run -d --name docker-whale %s' % (docker, image)
-    cmdlist = docker_cmd.split()
-    logging.info('Starting docker-whale image')
-    output, errors = utils.simple_popen(cmdlist)
-    text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
-    logging.debug(text)
-
-    return output
-
-
 def start_jabber(docker, jabber_ip, user1, pass1, user2, pass2):
     """ Starts up the jabber server """
     image = 'wallace123/docker-jabber'
     docker_cmd = '%s run -d -p 5222 --name docker-jabber -e JHOST=%s -e USER1=%s '\
-                 '-e PASS1=%s -e USER2=%s -e PASS2=%s -v /etc/hosts:/etc/hosts:ro '\
-                 '-v /etc/resolv.conf:/etc/resolv.conf:ro %s' % (docker, jabber_ip,
-                                                                 user1, pass1,
-                                                                 user2, pass2,
-                                                                 image)
+                 '-e PASS1=%s -e USER2=%s -e PASS2=%s %s' % (docker, jabber_ip,
+                                                             user1, pass1,
+                                                             user2, pass2,
+                                                             image)
     cmdlist = docker_cmd.split()
     logging.info('Starting docker-jabber image')
     output, errors = utils.simple_popen(cmdlist)
     text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
     logging.debug(text)
 
-    docker_cmd = '%s port docker-vnc' % docker
+    docker_cmd = '%s port docker-jabber' % docker
     cmdlist = docker_cmd.split()
     output, errors = utils.simple_popen(cmdlist)
     text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
@@ -257,14 +270,14 @@ def main():
     text = 'Created %d loop devices' % num_loops
     logging.info(text)
 
-    timestamp = datetime.utcnow().strftime('%Y-%m-%d-%H.%M.%S.%f')
-    mount_point = create_mount_point(timestamp)
-    docker_lib, docker_run = create_lib_run_dirs(timestamp)
-    loop_file = create_loop_file(timestamp)
-    docker_sock = 'unix://%s/docker-%s.sock' % (docker_lib, timestamp)
-    docker_pid = '%s/docker-%s.pid' % (docker_run, timestamp)
-    docker_bridge = 'docker0'
-    dockerd = copy_dockerd(timestamp)
+    rand_int = utils.rand_n_digits(9)
+    mount_point = create_mount_point(rand_int)
+    docker_lib, docker_run = create_lib_run_dirs(rand_int)
+    loop_file = create_loop_file(rand_int)
+    docker_sock = 'unix://%s/docker-%s.sock' % (docker_lib, rand_int)
+    docker_pid = '%s/docker-%s.pid' % (docker_run, rand_int)
+    docker_bridge = set_bridge(rand_int)
+    dockerd = copy_dockerd(rand_int)
     docker = '/usr/bin/docker -H %s ' % docker_sock
     device, acl_rule = run_nav(navpass, loop_file, mount_point, docker_lib, docker_run, dockerd)
     dockerd_cmd = 'nohup %s --bridge=%s --exec-root=%s -g %s -H %s '\
@@ -272,7 +285,7 @@ def main():
                                                            docker_lib, docker_sock, docker_pid)
 
     text = 'Variables for setup:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t'\
-           '%s\n\t%s\n\t%s\n\t%s' % (timestamp, mount_point, loop_file, docker_lib,
+           '%s\n\t%s\n\t%s\n\t%s' % (rand_int, mount_point, loop_file, docker_lib,
                                      docker_run, docker_sock, docker_pid, docker_bridge,
                                      dockerd, docker, device, acl_rule, dockerd_cmd)
     logging.debug(text)
@@ -293,9 +306,6 @@ def main():
     if image == 'wallace123/docker-vnc':
         vncpass = set_vnc_passwd()
         start_vnc(docker, vncpass)
-    elif image == 'wallace123/docker-whale':
-        output = start_whale(docker)
-        logging.info(output)
     elif image == 'wallace123/docker-jabber':
         jabber_ip, user1, pass1, user2, pass2 = set_jabber_vars()
         start_jabber(docker, jabber_ip, user1, pass1, user2, pass2)
