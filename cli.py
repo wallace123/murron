@@ -4,7 +4,6 @@ import sys
 import getpass
 import logging
 import subprocess
-from datetime import datetime
 from time import sleep
 
 try:
@@ -23,6 +22,8 @@ except ImportError:
 # Globals
 loggerinitializer.initialize_logger('./logs/cli.log')
 IMAGES = ['wallace123/docker-vnc', 'wallace123/docker-jabber']
+BRIDGE_IPS = ['172.18.1.1', '172.18.2.1', '172.18.3.1', '172.18.4.1',
+              '172.18.5.1', '172.18.6.1', '172.18.7.1', '172.18.8.1']
 
 
 def set_nav_passwd():
@@ -166,23 +167,46 @@ def run_nav(navpass, loop_file, mount_point, lib, run, dockerd):
     return device, acl_rule
 
 
+def get_avail_ip():
+    """ Gets available ip for bridge set up """
+    cmdlist = ['cat', '/proc/net/dev']
+    output, errors = utils.simple_popen(cmdlist)
+    text = 'Devices:\n\tOutput: %s\nErrors: %s' % (output, errors)
+    logging.debug(text)
+
+    tmp = output.split()
+    docker_dev = []
+    for item in tmp:
+        if 'docker' in item:
+            docker_dev.append(item.rstrip(':'))
+
+    used_ips = []
+    for dev in docker_dev:
+        used_ips.append(ni.ifaddresses(dev)[2][0]['addr'])
+
+    for avail_ip in BRIDGE_IPS:
+        if avail_ip not in used_ips:
+            return avail_ip
+
+
 def set_bridge(rand_int):
     """ Sets the bridge interface for dockerd """
+    avail_ip = get_avail_ip()
     docker_bridge = 'docker%d' % rand_int
 
     cmdlist = ['brctl', 'addbr', docker_bridge]
     output, errors = utils.simple_popen(cmdlist)
-    text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
+    text = 'brctl command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
     logging.debug(text)
 
-    cmdlist = ['ip', 'addr', 'add', '172.18.1.1/30', 'dev', docker_bridge]
+    cmdlist = ['ip', 'addr', 'add', '%s/24' % avail_ip, 'dev', docker_bridge]
     output, errors = utils.simple_popen(cmdlist)
-    text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
+    text = 'ip command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
     logging.debug(text)
 
     cmdlist = ['ip', 'link', 'set', 'dev', docker_bridge, 'up']
     output, errors = utils.simple_popen(cmdlist)
-    text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
+    text = 'ip command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
     logging.debug(text)
 
     text = 'Created bridge: %s' % docker_bridge
@@ -191,18 +215,18 @@ def set_bridge(rand_int):
     return docker_bridge
 
 
-def start_vnc(docker, vncpass):
+def start_vnc(docker, vncpass, rand_int):
     """ Starts up the docker-vnc image """
     image = 'wallace123/docker-vnc'
-    docker_cmd = '%s run -d -p 5900 --name docker-vnc -e VNCPASS=%s -v /etc/hosts:/etc/hosts:ro '\
-                 '-v /etc/resolv.conf:/etc/resolv.conf:ro %s' % (docker, vncpass, image)
+    docker_cmd = '%s run -d -p 5900 --name docker-vnc-%s -e VNCPASS=%s -v /etc/hosts:/etc/hosts:ro '\
+                 '-v /etc/resolv.conf:/etc/resolv.conf:ro %s' % (docker, rand_int, vncpass, image)
     cmdlist = docker_cmd.split()
     logging.info('Starting docker-vnc image')
     output, errors = utils.simple_popen(cmdlist)
     text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
     logging.debug(text)
 
-    docker_cmd = '%s port docker-vnc' % docker
+    docker_cmd = '%s port docker-vnc-%s' % (docker, rand_int)
     cmdlist = docker_cmd.split()
     output, errors = utils.simple_popen(cmdlist)
     text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
@@ -215,13 +239,12 @@ def start_vnc(docker, vncpass):
     return port
 
 
-def start_jabber(docker, jabber_ip, user1, pass1, user2, pass2):
+def start_jabber(docker, jabber_ip, user1, pass1, user2, pass2, rand_int):
     """ Starts up the jabber server """
     image = 'wallace123/docker-jabber'
-    docker_cmd = '%s run -d -p 5222 --name docker-jabber -e JHOST=%s -e USER1=%s '\
-                 '-e PASS1=%s -e USER2=%s -e PASS2=%s %s' % (docker, jabber_ip,
-                                                             user1, pass1,
-                                                             user2, pass2,
+    docker_cmd = '%s run -d -p 5222 --name docker-jabber-%s -e JHOST=%s -e USER1=%s '\
+                 '-e PASS1=%s -e USER2=%s -e PASS2=%s %s' % (docker, rand_int, jabber_ip,
+                                                             user1, pass1, user2, pass2,
                                                              image)
     cmdlist = docker_cmd.split()
     logging.info('Starting docker-jabber image')
@@ -229,7 +252,7 @@ def start_jabber(docker, jabber_ip, user1, pass1, user2, pass2):
     text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
     logging.debug(text)
 
-    docker_cmd = '%s port docker-jabber' % docker
+    docker_cmd = '%s port docker-jabber-%s' % (docker, rand_int)
     cmdlist = docker_cmd.split()
     output, errors = utils.simple_popen(cmdlist)
     text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
@@ -305,10 +328,10 @@ def main():
 
     if image == 'wallace123/docker-vnc':
         vncpass = set_vnc_passwd()
-        start_vnc(docker, vncpass)
+        start_vnc(docker, vncpass, rand_int)
     elif image == 'wallace123/docker-jabber':
         jabber_ip, user1, pass1, user2, pass2 = set_jabber_vars()
-        start_jabber(docker, jabber_ip, user1, pass1, user2, pass2)
+        start_jabber(docker, jabber_ip, user1, pass1, user2, pass2, rand_int)
     else:
         logging.error('Unsupported image')
 
