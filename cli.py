@@ -3,7 +3,6 @@ import os
 import sys
 import getpass
 import logging
-import subprocess
 from time import sleep
 
 try:
@@ -123,6 +122,23 @@ def copy_dockerd(rand_int):
     logging.info(text)
 
     return dockerd
+
+
+def create_dockerd_service(rand_int, dockerd_cmd):
+    """ Copies /usr/lib/systemd/system/docker.service and modifies for new dockerd """
+    docker_service = '/usr/lib/systemd/system/docker.service'
+    new_docker_service = '/usr/lib/systemd/system/docker%s.service' % rand_int
+    cmdlist = ['cp', docker_service, new_docker_service]
+    utils.simple_popen(cmdlist)
+    text = 'Copied new docker service:\n\t%s' % new_docker_service
+    logging.info(text)
+
+    old = 'ExecStart=/usr/bin/dockerd'
+    new = dockerd_cmd
+    utils.change_file(new_docker_service, old, new)
+
+    dservice_name = new_docker_service.split('/')[5]
+    return dservice_name
 
 
 def run_nav(navpass, loop_file, mount_point, lib, run, dockerd):
@@ -303,7 +319,7 @@ def main():
     dockerd = copy_dockerd(rand_int)
     docker = '/usr/bin/docker -H %s ' % docker_sock
     device, acl_rule = run_nav(navpass, loop_file, mount_point, docker_lib, docker_run, dockerd)
-    dockerd_cmd = 'nohup %s --bridge=%s --exec-root=%s -g %s -H %s '\
+    dockerd_cmd = 'ExecStart=%s --bridge=%s --exec-root=%s -g %s -H %s '\
                   '-p %s --storage-driver=devicemapper' % (dockerd, docker_bridge, docker_run,
                                                            docker_lib, docker_sock, docker_pid)
 
@@ -314,14 +330,8 @@ def main():
     logging.debug(text)
 
     logging.info('Starting docker daemon')
-    cmdlist = dockerd_cmd.split()
-    proc = subprocess.Popen(cmdlist,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            preexec_fn=os.setpgrp,
-                           ).pid
-    text = 'proc: %s' % proc
-    logging.info(text)
+    dservice = create_dockerd_service(rand_int, dockerd_cmd)
+    utils.start_enable_service(dservice)
 
     sleep(10) # Sleep so dockerd can finish starting
     logging.info('Check dockerd')
