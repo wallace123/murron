@@ -3,6 +3,7 @@ import os
 import sys
 import getpass
 import logging
+import pickle
 from time import sleep
 
 try:
@@ -44,7 +45,12 @@ def set_nav_passwd():
         else:
             logging.info('Passwords match')
 
-    return passwd
+    if navlib.check_nav_password(passwd):
+        logging.info('Password check succeeded')
+        return passwd
+    else:
+        logging.error('Password typed is not the navencrypt password')
+        sys.exit(1)
 
 
 def set_vnc_passwd():
@@ -72,9 +78,9 @@ def set_jabber_vars():
     """ Prompts user for jabber items """
     jabber_ip = raw_input("Enter the IP address of the jabber server: ")
     user1 = raw_input("Enter the username for user1: ")
-    pass1 = raw_input("Enter the password for user1: ")
+    pass1 = getpass.getpass("Enter the password for user1: ")
     user2 = raw_input("Enter the username for user2: ")
-    pass2 = raw_input("Enter the password for user2: ")
+    pass2 = getpass.getpass("Enter the password for user2: ")
 
     return jabber_ip, user1, pass1, user2, pass2
 
@@ -141,6 +147,7 @@ def create_dockerd_service(rand_int, dockerd_cmd):
     return dservice_name
 
 
+# pylint: disable=R0913
 def run_nav(navpass, loop_file, mount_point, lib, run, dockerd):
     """ Runs navencrypt commands to set up for dockerd start """
     navlog = open('./logs/navlog.log', 'a')
@@ -234,8 +241,10 @@ def set_bridge(rand_int):
 def start_vnc(docker, vncpass, rand_int):
     """ Starts up the docker-vnc image """
     image = 'wallace123/docker-vnc'
-    docker_cmd = '%s run -d -p 5900 --name docker-vnc-%s -e VNCPASS=%s -v /etc/hosts:/etc/hosts:ro '\
-                 '-v /etc/resolv.conf:/etc/resolv.conf:ro %s' % (docker, rand_int, vncpass, image)
+    container = 'docker-vnc-%s' % rand_int
+    docker_cmd = '%s run -d -p 5900 --name %s -e VNCPASS=%s '\
+                 '-v /etc/hosts:/etc/hosts:ro '\
+                 '-v /etc/resolv.conf:/etc/resolv.conf:ro %s' % (docker, container, vncpass, image)
     cmdlist = docker_cmd.split()
     logging.info('Starting docker-vnc image')
     output, errors = utils.simple_popen(cmdlist)
@@ -248,18 +257,21 @@ def start_vnc(docker, vncpass, rand_int):
     text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
     logging.debug(text)
     port_output = output.split(':')
-    port = port_output[1]
+    port = port_output[1].rstrip()
     text = 'VNC port: %s' % port
     logging.info(text)
 
-    return port
+    return container, port
 
 
+# pylint: disable=R0913
+# pylint: disable=R0914
 def start_jabber(docker, jabber_ip, user1, pass1, user2, pass2, rand_int):
     """ Starts up the jabber server """
     image = 'wallace123/docker-jabber'
-    docker_cmd = '%s run -d -p 5222 --name docker-jabber-%s -e JHOST=%s -e USER1=%s '\
-                 '-e PASS1=%s -e USER2=%s -e PASS2=%s %s' % (docker, rand_int, jabber_ip,
+    container = 'docker-jabber-%s' % rand_int
+    docker_cmd = '%s run -d -p 5222 --name %s -e JHOST=%s -e USER1=%s '\
+                 '-e PASS1=%s -e USER2=%s -e PASS2=%s %s' % (docker, container, jabber_ip,
                                                              user1, pass1, user2, pass2,
                                                              image)
     cmdlist = docker_cmd.split()
@@ -274,13 +286,15 @@ def start_jabber(docker, jabber_ip, user1, pass1, user2, pass2, rand_int):
     text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
     logging.debug(text)
     port_output = output.split(':')
-    port = port_output[1]
+    port = port_output[1].rstrip()
     text = 'VNC port: %s' % port
     logging.info(text)
 
-    return port
+    return container, port
 
 
+# pylint: disable=R0914
+# pylint: disable=R0915
 def main():
     """ Main function """
     logging.debug('='*25)
@@ -299,18 +313,20 @@ def main():
             text = 'User selected %s' % image
             logging.debug(text)
 
-    text = 'Setting firewall to masquerade on public zone'
-    logging.info(text)
-    utils.set_masquerade()
-
-    text = 'Ready to set up navencrypt volumes for %s' % image
-    logging.info(text)
-
+    logging.info('Running prereqs')
     navpass = set_nav_passwd()
 
     num_loops = 20
     utils.create_loop_devices(num_loops)
     text = 'Created %d loop devices' % num_loops
+    logging.info(text)
+
+    logging.info('Setting firewall to masquerade on public zone')
+    utils.set_masquerade()
+
+    logging.info('Prereqs complete')
+
+    text = 'Ready to set up navencrypt volumes for %s' % image
     logging.info(text)
 
     rand_int = utils.rand_n_digits(9)
@@ -328,12 +344,6 @@ def main():
                   '--ip-masq=false' % (dockerd, docker_bridge, docker_run, docker_lib, docker_sock,
                                        docker_pid)
 
-    text = 'Variables for setup:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t'\
-           '%s\n\t%s\n\t%s\n\t%s' % (rand_int, mount_point, loop_file, docker_lib,
-                                     docker_run, docker_sock, docker_pid, docker_bridge,
-                                     dockerd, docker, device, acl_rule, dockerd_cmd)
-    logging.debug(text)
-
     logging.info('Starting docker daemon')
     dservice = create_dockerd_service(rand_int, dockerd_cmd)
     utils.start_enable_service(dservice)
@@ -343,15 +353,23 @@ def main():
 
     if image == 'wallace123/docker-vnc':
         vncpass = set_vnc_passwd()
-        port = start_vnc(docker, vncpass, rand_int)
+        container, port = start_vnc(docker, vncpass, rand_int)
         utils.set_firewall(port)
     elif image == 'wallace123/docker-jabber':
         jabber_ip, user1, pass1, user2, pass2 = set_jabber_vars()
-        port = start_jabber(docker, jabber_ip, user1, pass1, user2, pass2, rand_int)
+        container, port = start_jabber(docker, jabber_ip, user1, pass1, user2, pass2, rand_int)
         utils.set_firewall(port)
     else:
         logging.error('Unsupported image')
 
+    # Set up dictionary for pickling so we can delete it with cleanup.py
+    data = {'container': container, 'dservice': dservice, 'device': device,
+            'mount_point': mount_point, 'docker_bridge': docker_bridge,
+            'acl_rule': acl_rule, 'port': port}
+    pickle_file = data['dservice'].split('.')[0] + '.pkl'
+    output = open(pickle_file, 'wb')
+    pickle.dump(data, output)
+    output.close()
 
 if __name__ == '__main__':
     main()
