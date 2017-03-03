@@ -299,6 +299,10 @@ def main():
             text = 'User selected %s' % image
             logging.debug(text)
 
+    text = 'Setting firewall to masquerade on public zone'
+    logging.info(text)
+    utils.set_masquerade()
+
     text = 'Ready to set up navencrypt volumes for %s' % image
     logging.info(text)
 
@@ -320,8 +324,9 @@ def main():
     docker = '/usr/bin/docker -H %s ' % docker_sock
     device, acl_rule = run_nav(navpass, loop_file, mount_point, docker_lib, docker_run, dockerd)
     dockerd_cmd = 'ExecStart=%s --bridge=%s --exec-root=%s -g %s -H %s '\
-                  '-p %s --storage-driver=devicemapper' % (dockerd, docker_bridge, docker_run,
-                                                           docker_lib, docker_sock, docker_pid)
+                  '-p %s --storage-driver=devicemapper --iptables=false '\
+                  '--ip-masq=false' % (dockerd, docker_bridge, docker_run, docker_lib, docker_sock,
+                                       docker_pid)
 
     text = 'Variables for setup:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t'\
            '%s\n\t%s\n\t%s\n\t%s' % (rand_int, mount_point, loop_file, docker_lib,
@@ -338,10 +343,12 @@ def main():
 
     if image == 'wallace123/docker-vnc':
         vncpass = set_vnc_passwd()
-        start_vnc(docker, vncpass, rand_int)
+        port = start_vnc(docker, vncpass, rand_int)
+        utils.set_firewall(port)
     elif image == 'wallace123/docker-jabber':
         jabber_ip, user1, pass1, user2, pass2 = set_jabber_vars()
-        start_jabber(docker, jabber_ip, user1, pass1, user2, pass2, rand_int)
+        port = start_jabber(docker, jabber_ip, user1, pass1, user2, pass2, rand_int)
+        utils.set_firewall(port)
     else:
         logging.error('Unsupported image')
 
