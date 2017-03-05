@@ -45,8 +45,10 @@ def set_nav_passwd():
         else:
             logging.info('Passwords match')
 
-    if navlib.check_nav_password(passwd):
+    navlog = open('./logs/navlog.log', 'a')
+    if navlib.check_nav_password(passwd, logfile=navlog):
         logging.info('Password check succeeded')
+        navlog.close()
         return passwd
     else:
         logging.error('Password typed is not the navencrypt password')
@@ -187,7 +189,7 @@ def run_nav(navpass, loop_file, mount_point, lib, run, dockerd):
 
     navlog.close()
 
-    return device, acl_rule
+    return device, category
 
 
 def get_avail_ip():
@@ -338,7 +340,7 @@ def main():
     docker_bridge = set_bridge(rand_int)
     dockerd = copy_dockerd(rand_int)
     docker = '/usr/bin/docker -H %s ' % docker_sock
-    device, acl_rule = run_nav(navpass, loop_file, mount_point, docker_lib, docker_run, dockerd)
+    device, category = run_nav(navpass, loop_file, mount_point, docker_lib, docker_run, dockerd)
     dockerd_cmd = 'ExecStart=%s --bridge=%s --exec-root=%s -g %s -H %s '\
                   '-p %s --storage-driver=devicemapper --iptables=false '\
                   '--ip-masq=false' % (dockerd, docker_bridge, docker_run, docker_lib, docker_sock,
@@ -363,11 +365,13 @@ def main():
         logging.error('Unsupported image')
 
     # Set up dictionary for pickling so we can delete it with cleanup.py
-    data = {'container': container, 'dservice': dservice, 'device': device,
-            'mount_point': mount_point, 'docker_bridge': docker_bridge,
-            'acl_rule': acl_rule, 'port': port}
-    pickle_file = data['dservice'].split('.')[0] + '.pkl'
-    output = open(pickle_file, 'wb')
+    pkl_file = dservice.split('.')[0] + '_cleanup.pkl'
+    data = {'container': container, 'docker': docker, 'dservice': dservice,
+            'device': device, 'docker_lib': docker_lib, 'docker_run': docker_run,
+            'mount_point': mount_point, 'dockerd': dockerd, 'docker_bridge': docker_bridge,
+            'category': category, 'port': port, 'loop_file': loop_file}
+
+    output = open(pkl_file, 'wb')
     pickle.dump(data, output)
     output.close()
 
