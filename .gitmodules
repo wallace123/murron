@@ -1,0 +1,6 @@
+[submodule "navlib"]
+	path = navlib
+	url = https://github.com/wallace123/navlib
+[submodule "pyutils"]
+	path = pyutils
+	url = https://github.com/wallace123/pyutils
