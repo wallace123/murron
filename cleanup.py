@@ -1,7 +1,7 @@
 import os
 import sys
 import getpass
-import pickle
+import json
 import logging
 from navlib import navlib
 from pyutils import utils
@@ -44,14 +44,14 @@ def set_nav_passwd():
 passwd = set_nav_passwd()
 files = os.listdir('.')
 
-pkl_list = []
+json_list = []
 for fil in files:
-    if '.pkl' in fil:
-        pkl_list.append(fil)
+    if '.json' in fil:
+        json_list.append(fil)
 
-for pkl in pkl_list:
-    pkl_file = open(pkl, 'rb')
-    data = pickle.load(pkl_file)
+for jsn in json_list:
+    json_file = open(jsn, 'r')
+    data = json.load(json_file)
 
     # Stop the container
     docker_cmd = data['docker'].split()
@@ -116,7 +116,7 @@ for pkl in pkl_list:
     utils.remove_firewall(data['port'])
     logging.info('Port removed')
 
-    pkl_file.close()
-    cmdlist = ['rm', '-rf', pkl]
+    json_file.close()
+    cmdlist = ['rm', '-rf', jsn]
     utils.simple_popen(cmdlist)
     logging.info('removed pkl file')

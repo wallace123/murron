@@ -3,7 +3,7 @@ import os
 import sys
 import getpass
 import logging
-import pickle
+import json
 from time import sleep
 import netifaces  # Need to pip install netifaces
 
@@ -368,14 +368,14 @@ def main():
         logging.error('Unsupported image')
 
     # Set up dictionary for pickling so we can delete it with cleanup.py
-    pkl_file = dservice.split('.')[0] + '_cleanup.pkl'
+    json_file = dservice.split('.')[0] + '_cleanup.json'
     data = {'container': container, 'docker': docker, 'dservice': dservice,
             'device': device, 'docker_lib': docker_lib, 'docker_run': docker_run,
             'mount_point': mount_point, 'dockerd': dockerd, 'docker_bridge': docker_bridge,
             'category': category, 'port': port, 'loop_file': loop_file}
 
-    output = open(pkl_file, 'wb')
-    pickle.dump(data, output)
+    output = open(json_file, 'wb')
+    json.dump(data, output)
     output.close()
 
 if __name__ == '__main__':
