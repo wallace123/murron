@@ -5,22 +5,25 @@ import getpass
 import logging
 import pickle
 from time import sleep
+import netifaces  # Need to pip install netifaces
 
-try:
-    # pylint: disable=W0403
-    from navlib import navlib
-    from pyutils import utils
-    from pyutils import loggerinitializer
-    import netifaces as ni
-except ImportError:
-    print 'navlib, utils, loggerinitializer, or netifaces could not be imported.\n'\
-          'Do git clone https://github.com/wallace123/navlib.git.\n'\
-          'Do git clone https://github.com/wallace123/pyutils.git.\n'\
-          'Do pip install netifaces.\n'
-    sys.exit(1)
+
+# Import submodules
+# pylint: disable=W0403
+from navlib import navlib
+from pyutils import utils, loggerinitializer
+
 
 # Globals
-loggerinitializer.initialize_logger('./logs/cli.log')
+LOG_PATH = '/var/log/murron'
+try:
+    os.mkdir(LOG_PATH)
+except OSError:
+    # Dir already exists
+    pass
+CLI_LOG = os.path.join(LOG_PATH, 'cli.log')
+loggerinitializer.initialize_logger(CLI_LOG)
+NAV_LOG = os.path.join(LOG_PATH, 'nav.log')
 IMAGES = ['wallace123/docker-vnc', 'wallace123/docker-jabber']
 BRIDGE_IPS = ['172.18.1.1', '172.18.2.1', '172.18.3.1', '172.18.4.1',
               '172.18.5.1', '172.18.6.1', '172.18.7.1', '172.18.8.1']
@@ -45,7 +48,7 @@ def set_nav_passwd():
         else:
             logging.info('Passwords match')
 
-    navlog = open('./logs/navlog.log', 'a')
+    navlog = open(NAV_LOG, 'a')
     if navlib.check_nav_password(passwd, logfile=navlog):
         logging.info('Password check succeeded')
         navlog.close()
@@ -152,7 +155,7 @@ def create_dockerd_service(rand_int, dockerd_cmd):
 # pylint: disable=R0913
 def run_nav(navpass, loop_file, mount_point, lib, run, dockerd):
     """ Runs navencrypt commands to set up for dockerd start """
-    navlog = open('./logs/navlog.log', 'a')
+    navlog = open(NAV_LOG, 'a')
 
     device = utils.simple_popen(['losetup', '-f'])[0].rstrip()
 
@@ -207,7 +210,7 @@ def get_avail_ip():
 
     used_ips = []
     for dev in docker_dev:
-        used_ips.append(ni.ifaddresses(dev)[2][0]['addr'])
+        used_ips.append(netifaces.ifaddresses(dev)[2][0]['addr'])
 
     for avail_ip in BRIDGE_IPS:
         if avail_ip not in used_ips:
@@ -350,7 +353,7 @@ def main():
     dservice = create_dockerd_service(rand_int, dockerd_cmd)
     utils.start_enable_service(dservice)
 
-    sleep(10) # Sleep so dockerd can finish starting
+    sleep(5) # Sleep so dockerd can finish starting
     logging.info('Check dockerd')
 
     if image == 'wallace123/docker-vnc':

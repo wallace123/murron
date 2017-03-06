@@ -7,9 +7,10 @@ from navlib import navlib
 from pyutils import utils
 from pyutils import loggerinitializer
 
-
-loggerinitializer.initialize_logger('./logs/cleanup.log')
-
+LOG_PATH = '/var/log/murron'
+CLEANUP_LOG = os.path.join(LOG_PATH, 'cleanup.log')
+loggerinitializer.initialize_logger(CLEANUP_LOG)
+NAV_LOG = os.path.join(LOG_PATH, 'nav_cleanup.log')
 
 def set_nav_passwd():
     """ Prompts user for Nav Admin password to be used
@@ -30,7 +31,7 @@ def set_nav_passwd():
         else:
             logging.info('Passwords match')
 
-    navlog = open('./logs/navlog.log', 'a')
+    navlog = open(NAV_LOG, 'a')
     if navlib.check_nav_password(passwd, logfile=navlog):
         logging.info('Password check succeeded')
         navlog.close()
@@ -68,7 +69,7 @@ for pkl in pkl_list:
     logging.info('service removed')
 
     # Remove navencrypt items
-    navlog = open('./logs/navlog.log', 'a')
+    navlog = open(NAV_LOG, 'a')
     if navlib.nav_prepare_loop_del(passwd, data['device'], logfile=navlog):
         logging.info('navencrypt prepare -f succeeded')
     else:
