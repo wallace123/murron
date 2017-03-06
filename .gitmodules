@@ -4,3 +4,6 @@
 [submodule "pyutils"]
 	path = pyutils
 	url = https://github.com/wallace123/pyutils
+[submodule "dockerlib"]
+	path = dockerlib
+	url = https://github.com/wallace123/dockerlib
