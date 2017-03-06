@@ -341,7 +341,7 @@ def main():
     dockerd = copy_dockerd(rand_int)
     docker = '/usr/bin/docker -H %s ' % docker_sock
     device, category = run_nav(navpass, loop_file, mount_point, docker_lib, docker_run, dockerd)
-    dockerd_cmd = 'ExecStart=%s --bridge=%s --exec-root=%s -g %s -H %s '\
+    dockerd_cmd = 'ExecStart=%s -D --bridge=%s --exec-root=%s -g %s -H %s '\
                   '-p %s --storage-driver=devicemapper --iptables=false '\
                   '--ip-masq=false' % (dockerd, docker_bridge, docker_run, docker_lib, docker_sock,
                                        docker_pid)
