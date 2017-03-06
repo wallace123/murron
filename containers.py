@@ -10,6 +10,7 @@ from pyutils import utils
 BRIDGE_IPS = ['172.18.1.1', '172.18.2.1', '172.18.3.1', '172.18.4.1',
               '172.18.5.1', '172.18.6.1', '172.18.7.1', '172.18.8.1']
 
+# pylint: disable=R0902
 class ContainerBase(object):
     """ Base class for docker nav containers """
     def __init__(self, rand_int):
@@ -20,6 +21,8 @@ class ContainerBase(object):
         self.mount = self.create_mount()
         self.dockerd = self.create_dockerd()
         self.bridge = self.create_bridge()
+        self.docker_service_full_path = self.create_dservice()
+        self.docker_service_name = self.get_dservice_name()
 
     def create_lib(self):
         """ Creates the docker lib directory """
@@ -95,3 +98,34 @@ class ContainerBase(object):
         utils.simple_popen(cmdlist)
 
         return docker_bridge
+
+    def create_dservice(self):
+        """ Copies /usr/lib/systemd/system/docker.service
+            and modifies for new dockerd """
+        # Copy docker service file to new docker service file
+        docker_service = '/usr/lib/systemd/system/docker.service'
+        new_docker_service = '/usr/lib/systemd/system/docker%s.service' % self.rand_int
+        cmdlist = ['cp', docker_service, new_docker_service]
+        utils.simple_popen(cmdlist)
+
+        # Modify new docker service file
+        dockerd_cmd = 'ExecStart=%s '\
+                      '-D --bridge=%s '\
+                      '--exec-root=%s '\
+                      '-g %s '\
+                      '-H unix://%s/docker.sock '\
+                      '-p %s/docker.pid '\
+                      '--storage-driver=devicemapper '\
+                      '--iptables=false --ip-masq=false' % (self.dockerd, self.bridge,
+                                                            self.docker_run, self.docker_lib,
+                                                            self.docker_lib, self.docker_run)
+
+        old = 'ExecStart=/usr/bin/dockerd'
+        new = dockerd_cmd
+        utils.change_file(new_docker_service, old, new)
+
+        return new_docker_service
+
+    def get_dservice_name(self):
+        """ Get the service name for starting and stopping service """
+        return self.docker_service_full_path.split('/')[5].split('.')[0]
