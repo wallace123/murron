@@ -201,3 +201,39 @@ class DockerVNC(ContainerBase):
         port = port_output[1].rstrip()
 
         return port
+
+
+class DockerJabber(ContainerBase):
+    """ Class for wallace123/docker-jabber containers """
+    # pylint: disable=R0913
+    def __init__(self, rand_int, navpass, jabber_ip, user1, pass1,
+                 user2, pass2):
+        ContainerBase.__init__(self, rand_int, navpass)
+        self.jabber_ip = jabber_ip
+        self.user1 = user1
+        self.pass1 = pass1
+        self.user2 = user2
+        self.pass2 = pass2
+
+    def run(self):
+        """ Starts the container, returns the port it started on """
+        # Start the container
+        docker_cmd = '%s run -d -p 5222 --name docker-jabber -e JHOST=%s -e USER1=%s '\
+                     '-e PASS1=%s -e USER2=%s -e PASS2=%s '\
+                     'wallace123/docker-jabber' % (self.docker, self.jabber_ip,
+                                                   self.user1, self.pass1,
+                                                   self.user2, self.pass2)
+
+        cmdlist = docker_cmd.split()
+        utils.simple_popen(cmdlist)
+
+        # Get the port
+        docker_cmd = '%s port docker-jabber-%s' % (self.docker, self.rand_int)
+        cmdlist = docker_cmd.split()
+        # pylint: disable=W0612
+        output, errors = utils.simple_popen(cmdlist)
+
+        port_output = output.split(':')
+        port = port_output[1].rstrip()
+
+        return port
