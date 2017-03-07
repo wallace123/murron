@@ -15,11 +15,19 @@ from pyutils import utils, loggerinitializer
 
 # Globals
 LOG_PATH = '/var/log/murron'
+JSON_PATH = './json'
 try:
     os.mkdir(LOG_PATH)
 except OSError:
     # Dir already exists
     pass
+
+try:
+    os.mkdir(JSON_PATH)
+except OSError:
+    # Dir already exists
+    pass
+
 CLI_LOG = os.path.join(LOG_PATH, 'cli.log')
 loggerinitializer.initialize_logger(CLI_LOG)
 NAV_LOG = os.path.join(LOG_PATH, 'nav.log')
@@ -39,8 +47,6 @@ def set_vnc_passwd():
             print 'Passwords do not match. Try again.'
             trys += 1
         else:
-            text = 'VNC password: %s' % passwd
-            logging.debug(text)
             return passwd
 
     logging.error('Max trys for setting VNC password reached')
@@ -58,8 +64,79 @@ def set_jabber_vars():
     return jabber_ip, user1, pass1, user2, pass2
 
 
-# pylint: disable=R0914
-# pylint: disable=R0915
+def setup_vnc(rand_int, navpass, navlog):
+    """ Does the setup and starting of the VNC container """
+    vncpass = set_vnc_passwd()
+
+    logging.info('Initializing DockerVNC instance')
+    vnc = containers.DockerVNC(rand_int, navpass, navlog, vncpass)
+
+    logging.info('Starting dockerd')
+    utils.start_enable_service(vnc.docker_service_name)
+    sleep(5) # Wait for dockerd to start
+
+    logging.info('Starting VNC container')
+    port = vnc.run()
+    text = 'VNC container started on port: %s' % str(port)
+    logging.info(text)
+
+    logging.info('Opening firewall port')
+    utils.set_firewall(port)
+
+    json_file = os.path.join(JSON_PATH, vnc.docker_service_name + '_cleanup.json')
+
+    data = {'container': 'docker-vnc', 'docker': vnc.docker,
+            'dservice': vnc.docker_service_name, 'device': vnc.device,
+            'docker_lib': vnc.docker_lib, 'docker_run': vnc.docker_run,
+            'mount_point': vnc.mount, 'dockerd': vnc.dockerd,
+            'docker_bridge': vnc.bridge, 'category': vnc.category,
+            'port': port, 'loop_file': vnc.loop_file,
+            'dservice_path': vnc.docker_service_full_path}
+
+    output = open(json_file, 'w')
+    json.dump(data, output)
+    text = 'Created json cleanup file: %s' % json_file
+    logging.info(text)
+    output.close()
+
+
+def setup_jabber(rand_int, navpass, navlog):
+    """ Does the setup and starting of Jabber container """
+    jabber_ip, user1, pass1, user2, pass2 = set_jabber_vars()
+
+    logging.info('Initializing DockerJabber instance')
+    jabber = containers.DockerJabber(rand_int, navpass, navlog, jabber_ip,
+                                     user1, pass1, user2, pass2)
+
+    logging.info('Starting dockerd')
+    utils.start_enable_service(jabber.docker_service_name)
+    sleep(5) # Wait for dockerd to start
+
+    logging.info('Starting jabber container')
+    port = jabber.run()
+    text = 'Jabber Container started on port: %s' % str(port)
+    logging.info(text)
+
+    logging.info('Opening firewall port')
+    utils.set_firewall(port)
+
+    json_file = os.path.join(JSON_PATH, jabber.docker_service_name + '_cleanup.json')
+
+    data = {'container': 'docker-jabber', 'docker': jabber.docker,
+            'dservice': jabber.docker_service_name, 'device': jabber.device,
+            'docker_lib': jabber.docker_lib, 'docker_run': jabber.docker_run,
+            'mount_point': jabber.mount, 'dockerd': jabber.dockerd,
+            'docker_bridge': jabber.bridge, 'category': jabber.category,
+            'port': port, 'loop_file': jabber.loop_file,
+            'dservice_path': jabber.docker_service_full_path}
+
+    output = open(json_file, 'w')
+    json.dump(data, output)
+    text = 'Created json cleanup file: %s' % json_file
+    logging.info(text)
+    output.close()
+
+
 def main():
     """ Main function """
     logging.debug('='*25)
@@ -102,37 +179,12 @@ def main():
     rand_int = utils.rand_n_digits(9)
 
     if image == 'wallace123/docker-vnc':
-        vncpass = set_vnc_passwd()
-        logging.info('Initializing DockerVNC instance')
-        vnc = containers.DockerVNC(rand_int, navpass, navlog, vncpass)
-        logging.info('Starting dockerd')
-        utils.start_enable_service(vnc.docker_service_name)
-        sleep(5) # Wait for dockerd to start
-        logging.info('Starting VNC container')
-        port = vnc.run()
-        text = 'VNC container started on port: %s' % str(port)
-        logging.info(text)
-        utils.set_firewall(port)
-        json_file = vnc.docker_service_name + '_cleanup.json'
-        data = {'container': 'docker-vnc', 'docker': vnc.docker,
-                'dservice': vnc.docker_service_name, 'device': vnc.device,
-                'docker_lib': vnc.docker_lib, 'docker_run': vnc.docker_run,
-                'mount_point': vnc.mount, 'dockerd': vnc.dockerd,
-                'docker_bridge': vnc.bridge, 'category': vnc.category,
-                'port': port, 'loop_file': vnc.loop_file,
-                'dservice_path': vnc.docker_service_full_path}
+        setup_vnc(rand_int, navpass, navlog)
     elif image == 'wallace123/docker-jabber':
-        pass
-        #jabber_ip, user1, pass1, user2, pass2 = set_jabber_vars()
-        #container, port = start_jabber(docker, jabber_ip, user1, pass1, user2, pass2, rand_int)
-        #utils.set_firewall(port)
+        setup_jabber(rand_int, navpass, navlog)
     else:
         logging.error('Unsupported image')
 
-    # Set up dictionary for pickling so we can delete it with cleanup.py
-    output = open(json_file, 'wb')
-    json.dump(data, output)
-    output.close()
     navlog.close()
 
 if __name__ == '__main__':

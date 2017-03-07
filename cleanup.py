@@ -21,7 +21,7 @@ else:
     logging.error('Nav password incorrect, exiting')
     sys.exit(1)
 
-files = os.listdir('.')
+files = os.listdir('./json')
 
 json_list = []
 for fil in files:
@@ -29,7 +29,7 @@ for fil in files:
         json_list.append(fil)
 
 for jsn in json_list:
-    json_file = open(jsn, 'r')
+    json_file = open(os.path.join('./json', jsn), 'r')
     data = json.load(json_file)
 
     # Stop the container
@@ -93,7 +93,7 @@ for jsn in json_list:
     logging.info('Port removed')
 
     json_file.close()
-    cmdlist = ['rm', '-rf', jsn]
+    cmdlist = ['rm', '-rf', os.path.join('./json', jsn)]
     utils.simple_popen(cmdlist)
     logging.info('removed json file')
 
