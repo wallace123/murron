@@ -1,6 +1,7 @@
 """ Module which contains container classes """
 
 import sys
+import logging
 import netifaces  # Need to pip install netifaces
 
 # Import submodules
@@ -38,6 +39,9 @@ class ContainerBase(object):
         cmdlist = ['mkdir', '-p', lib]
         utils.simple_popen(cmdlist)
 
+        text = 'Created directory: %s' % lib
+        logging.info(text)
+
         return lib
 
     def create_run(self):
@@ -45,6 +49,9 @@ class ContainerBase(object):
         run = '/dmcrypt/run/docker-%s' % self.rand_int
         cmdlist = ['mkdir', '-p', run]
         utils.simple_popen(cmdlist)
+
+        text = 'Created directory: %s' % run
+        logging.info(text)
 
         return run
 
@@ -54,6 +61,9 @@ class ContainerBase(object):
         cmdlist = ['dd', 'if=/dev/zero', 'of=%s' % loop_file, 'bs=1M', 'count=2048']
         utils.simple_popen(cmdlist)
 
+        text = 'Created loop file: %s' % loop_file
+        logging.info(text)
+
         return loop_file
 
     def create_mount(self):
@@ -62,6 +72,9 @@ class ContainerBase(object):
         cmdlist = ['mkdir', '-p', mount_point]
         utils.simple_popen(cmdlist)
 
+        text = 'Created directory: %s' % mount_point
+        logging.info(text)
+
         return mount_point
 
     def create_dockerd(self):
@@ -69,6 +82,9 @@ class ContainerBase(object):
         dockerd = '/usr/bin/dockerd-%s' % self.rand_int
         cmdlist = ['cp', '/usr/bin/dockerd', dockerd]
         utils.simple_popen(cmdlist)
+
+        text = 'Created binary: %s' % dockerd
+        logging.info(text)
 
         return dockerd
 
@@ -106,6 +122,8 @@ class ContainerBase(object):
         cmdlist = ['ip', 'link', 'set', 'dev', docker_bridge, 'up']
         utils.simple_popen(cmdlist)
 
+        text = 'Created bridge %s with ip %s' % (docker_bridge, bridge_ip)
+
         return docker_bridge
 
     def create_dservice(self):
@@ -133,6 +151,9 @@ class ContainerBase(object):
         new = dockerd_cmd
         utils.change_file(new_docker_service, old, new)
 
+        text = 'Created docker service file: %s' % new_docker_service
+        logging.info(text)
+
         return new_docker_service
 
     def get_dservice_name(self):
@@ -145,33 +166,36 @@ class ContainerBase(object):
 
         if navlib.nav_prepare_loop(self.navpass, self.loop_file, device, self.mount,
                                    self.navlogfile):
-            print 'Nav prepare completed'
+            logging.info('Nav prepare completed')
         else:
-            print 'Something went wrong on nav prepare command'
+            logging.error('Something went wrong on nav prepare command')
             sys.exit(1)
 
         category = '@%s' % self.mount.split('/')[1]
 
         if navlib.nav_encrypt(self.navpass, category, self.docker_lib, self.mount,
                               self.navlogfile):
-            print 'Nav encrypt of %s complete' % self.docker_lib
+            text = 'Nav encrypt of %s complete' % self.docker_lib
+            logging.info(text)
         else:
-            print 'Something went wrong with the nav move command'
+            logging.error('Something went wrong with the nav move command')
             sys.exit(1)
 
         if navlib.nav_encrypt(self.navpass, category, self.docker_run, self.mount,
                               self.navlogfile):
-            print 'Nav encrypt of %s complete' % self.docker_run
+            text = 'Nav encrypt of %s complete' % self.docker_run
+            logging.info(text)
         else:
-            print 'Something went wrong with the nav move command'
+            logging.error('Something went wrong with the nav move command')
             sys.exit(1)
 
         acl_rule = 'ALLOW %s * %s' % (category, self.dockerd)
 
         if navlib.nav_acl_add(self.navpass, acl_rule, self.navlogfile):
-            print 'Nav acl rule added %s' % acl_rule
+            text = 'Nav acl rule added %s' % acl_rule
+            logging.info(text)
         else:
-            print 'Something went wrong with adding the acl rule'
+            logging.error('Something went wrong with adding the acl rule')
             sys.exit(1)
 
         return device, category
