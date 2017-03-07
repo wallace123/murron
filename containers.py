@@ -23,6 +23,7 @@ class ContainerBase(object):
         self.bridge = self.create_bridge()
         self.docker_service_full_path = self.create_dservice()
         self.docker_service_name = self.get_dservice_name()
+        self.docker = '/usr/bin/docker -H unix://%s/docker.sock' % self.docker_lib
 
     def create_lib(self):
         """ Creates the docker lib directory """
@@ -129,3 +130,33 @@ class ContainerBase(object):
     def get_dservice_name(self):
         """ Get the service name for starting and stopping service """
         return self.docker_service_full_path.split('/')[5].split('.')[0]
+
+
+class DockerVNC(ContainerBase):
+    """ Class for wallace123/docker-vnc containers """
+    def __init__(self, rand_int, vncpass):
+        ContainerBase.__init__(self, self.rand_int)
+        self.vncpass = vncpass
+
+    def run(self):
+        """ Starts the container, returns the port it started on """
+        # Start the container
+        docker_cmd = '%s run -d -p 5900 --name docker-vnc '\
+                     '-e VNCPASS=%s '\
+                     '-v /etc/hosts:/etc/hosts:ro '\
+                     '-v /etc/resolv.conf:/etc/resolv.conf:ro '\
+                     'wallace123/docker-vnc' % (self.docker, self.vncpass)
+
+        cmdlist = docker_cmd.split()
+        utils.simple_popen(cmdlist)
+
+        # Get the port
+        docker_cmd = '%s port docker-vnc' % self.docker
+        cmdlist = docker_cmd.split()
+        # pylint: disable=W0612
+        output, errors = utils.simple_popen(cmdlist)
+
+        port_output = output.split(':')
+        port = port_output[1].rstrip()
+
+        return port
