@@ -15,7 +15,7 @@ BRIDGE_IPS = ['172.18.1.1', '172.18.2.1', '172.18.3.1', '172.18.4.1',
 # pylint: disable=R0902
 class ContainerBase(object):
     """ Base class for docker nav containers """
-    def __init__(self, rand_int, navpass):
+    def __init__(self, rand_int, navpass, navlogfile=sys.stdout):
         self.rand_int = rand_int
         self.navpass = navpass
         self.docker_lib = self.create_lib()
@@ -27,6 +27,7 @@ class ContainerBase(object):
         self.docker_service_full_path = self.create_dservice()
         self.docker_service_name = self.get_dservice_name()
         self.docker = '/usr/bin/docker -H unix://%s/docker.sock' % self.docker_lib
+        self.navlogfile = navlogfile
 
         # Navencrypt setup
         self.device, self.category = self.run_nav()
@@ -142,7 +143,8 @@ class ContainerBase(object):
         """ Sets up navencrypt items """
         device = utils.simple_popen(['losetup', '-f'])[0].rstrip()
 
-        if navlib.nav_prepare_loop(self.navpass, self.loop_file, device, self.mount):
+        if navlib.nav_prepare_loop(self.navpass, self.loop_file, device, self.mount,
+                                   self.navlogfile):
             print 'Nav prepare completed'
         else:
             print 'Something went wrong on nav prepare command'
@@ -150,13 +152,15 @@ class ContainerBase(object):
 
         category = '@%s' % self.mount.split('/')[1]
 
-        if navlib.nav_encrypt(self.navpass, category, self.docker_lib, self.mount):
+        if navlib.nav_encrypt(self.navpass, category, self.docker_lib, self.mount,
+                              self.navlogfile):
             print 'Nav encrypt of %s complete' % self.docker_lib
         else:
             print 'Something went wrong with the nav move command'
             sys.exit(1)
 
-        if navlib.nav_encrypt(self.navpass, category, self.docker_run, self.mount):
+        if navlib.nav_encrypt(self.navpass, category, self.docker_run, self.mount,
+                              self.navlogfile):
             print 'Nav encrypt of %s complete' % self.docker_run
         else:
             print 'Something went wrong with the nav move command'
@@ -164,7 +168,7 @@ class ContainerBase(object):
 
         acl_rule = 'ALLOW %s * %s' % (category, self.dockerd)
 
-        if navlib.nav_acl_add(self.navpass, acl_rule):
+        if navlib.nav_acl_add(self.navpass, acl_rule, self.navlogfile):
             print 'Nav acl rule added %s' % acl_rule
         else:
             print 'Something went wrong with adding the acl rule'
@@ -175,8 +179,8 @@ class ContainerBase(object):
 
 class DockerVNC(ContainerBase):
     """ Class for wallace123/docker-vnc containers """
-    def __init__(self, rand_int, navpass, vncpass):
-        ContainerBase.__init__(self, rand_int, navpass)
+    def __init__(self, rand_int, navpass, navlogfile, vncpass):
+        ContainerBase.__init__(self, rand_int, navpass, navlogfile)
         self.vncpass = vncpass
 
     def run(self):
@@ -206,9 +210,9 @@ class DockerVNC(ContainerBase):
 class DockerJabber(ContainerBase):
     """ Class for wallace123/docker-jabber containers """
     # pylint: disable=R0913
-    def __init__(self, rand_int, navpass, jabber_ip, user1, pass1,
-                 user2, pass2):
-        ContainerBase.__init__(self, rand_int, navpass)
+    def __init__(self, rand_int, navpass, navlogfile,
+                 jabber_ip, user1, pass1, user2, pass2):
+        ContainerBase.__init__(self, rand_int, navpass, navlogfile)
         self.jabber_ip = jabber_ip
         self.user1 = user1
         self.pass1 = pass1

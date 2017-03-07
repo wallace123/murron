@@ -12,36 +12,15 @@ CLEANUP_LOG = os.path.join(LOG_PATH, 'cleanup.log')
 loggerinitializer.initialize_logger(CLEANUP_LOG)
 NAV_LOG = os.path.join(LOG_PATH, 'nav_cleanup.log')
 
-def set_nav_passwd():
-    """ Prompts user for Nav Admin password to be used
-        during nav commands. Optionally, can read from
-        environment variable to speed up deployments for
-        automated testing.
-    """
-    try:
-        passwd = os.environ['NAVPASS']
-        logging.info('Using environ password')
-    except KeyError:
-        passwd = getpass.getpass('Enter Navencrypt Admin password: ')
-        ver_passwd = getpass.getpass('Verify password: ')
+navlog = open(NAV_LOG, 'a')
 
-        if passwd != ver_passwd:
-            logging.error('Passwords do not match. Exiting...')
-            sys.exit(1)
-        else:
-            logging.info('Passwords match')
+passwd = navlib.set_nav_passwd()
+if navlib.check_nav_passwd(passwd, navlog):
+    logging.info('Nav password correct')
+else:
+    logging.error('Nav password incorrect, exiting')
+    sys.exit(1)
 
-    navlog = open(NAV_LOG, 'a')
-    if navlib.check_nav_password(passwd, logfile=navlog):
-        logging.info('Password check succeeded')
-        navlog.close()
-        return passwd
-    else:
-        logging.error('Password typed is not the navencrypt password')
-        sys.exit(1)
-
-
-passwd = set_nav_passwd()
 files = os.listdir('.')
 
 json_list = []
@@ -69,7 +48,6 @@ for jsn in json_list:
     logging.info('service removed')
 
     # Remove navencrypt items
-    navlog = open(NAV_LOG, 'a')
     if navlib.nav_prepare_loop_del(passwd, data['device'], logfile=navlog):
         logging.info('navencrypt prepare -f succeeded')
     else:
@@ -81,8 +59,6 @@ for jsn in json_list:
     else:
         logging.error('acl remove failed')
         sys.exit(1)
-
-    navlog.close()
 
     # Remove docker items
     cmdlist = ['rm', '-rf', data['docker_lib']]
@@ -120,3 +96,6 @@ for jsn in json_list:
     cmdlist = ['rm', '-rf', jsn]
     utils.simple_popen(cmdlist)
     logging.info('removed json file')
+
+
+navlog.close()
