@@ -64,7 +64,7 @@ for jsn in json_list:
     logging.info('service disabled')
 
     # Remove service
-    cmdlist = ['rm', '-rf', '/usr/lib/systemd/system/%s' % data['dservice']]
+    cmdlist = ['rm', '-rf', data['dservice_path']]
     utils.simple_popen(cmdlist)
     logging.info('service removed')
 
@@ -119,4 +119,4 @@ for jsn in json_list:
     json_file.close()
     cmdlist = ['rm', '-rf', jsn]
     utils.simple_popen(cmdlist)
-    logging.info('removed pkl file')
+    logging.info('removed json file')

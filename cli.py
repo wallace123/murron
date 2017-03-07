@@ -5,11 +5,10 @@ import getpass
 import logging
 import json
 from time import sleep
-import netifaces  # Need to pip install netifaces
-
 
 # Import submodules
 # pylint: disable=W0403
+import containers
 from navlib import navlib
 from pyutils import utils, loggerinitializer
 
@@ -25,8 +24,6 @@ CLI_LOG = os.path.join(LOG_PATH, 'cli.log')
 loggerinitializer.initialize_logger(CLI_LOG)
 NAV_LOG = os.path.join(LOG_PATH, 'nav.log')
 IMAGES = ['wallace123/docker-vnc', 'wallace123/docker-jabber']
-BRIDGE_IPS = ['172.18.1.1', '172.18.2.1', '172.18.3.1', '172.18.4.1',
-              '172.18.5.1', '172.18.6.1', '172.18.7.1', '172.18.8.1']
 
 
 def set_nav_passwd():
@@ -88,185 +85,6 @@ def set_jabber_vars():
     pass2 = getpass.getpass("Enter the password for user2: ")
 
     return jabber_ip, user1, pass1, user2, pass2
-
-
-def create_lib_run_dirs(rand_int):
-    """ Creates the lib and run dirs for docker daemon """
-    lib = '/dmcrypt/lib/docker-%s' % rand_int
-    run = '/dmcrypt/run/docker-%s' % rand_int
-    cmdlist = ['mkdir', '-p', lib, run]
-    utils.simple_popen(cmdlist)
-    text = 'Created directories:\n\t%s\n\t%s' % (lib, run)
-    logging.info(text)
-
-    return lib, run
-
-
-def create_loop_file(rand_int):
-    """ Creates a 2G loop file for nav mounting """
-    loop_file = '/dmcrypt/docker-%s-loop' % rand_int
-    cmdlist = ['dd', 'if=/dev/zero', 'of=%s' % loop_file, 'bs=1M', 'count=2048']
-    utils.simple_popen(cmdlist)
-    text = 'Created file for loop device:\n\t%s' % (loop_file)
-    logging.info(text)
-
-    return loop_file
-
-
-def create_mount_point(rand_int):
-    """ Creates the mountpoint for nav mounting """
-    mount_point = '/docker-%s-mount' % rand_int
-    cmdlist = ['mkdir', '-p', mount_point]
-    utils.simple_popen(cmdlist)
-    text = 'Created directory:\n\t%s' % mount_point
-    logging.info(text)
-
-    return mount_point
-
-
-def copy_dockerd(rand_int):
-    """ Copies /usr/bin/dockerd to /usr/bin/dockerd-<timestamp> """
-    dockerd = '/usr/bin/dockerd-%s' % rand_int
-    cmdlist = ['cp', '/usr/bin/dockerd', dockerd]
-    utils.simple_popen(cmdlist)
-    text = 'Copied new dockerd:\n\t%s' % dockerd
-    logging.info(text)
-
-    return dockerd
-
-
-def create_dockerd_service(rand_int, dockerd_cmd):
-    """ Copies /usr/lib/systemd/system/docker.service and modifies for new dockerd """
-    docker_service = '/usr/lib/systemd/system/docker.service'
-    new_docker_service = '/usr/lib/systemd/system/docker%s.service' % rand_int
-    cmdlist = ['cp', docker_service, new_docker_service]
-    utils.simple_popen(cmdlist)
-    text = 'Copied new docker service:\n\t%s' % new_docker_service
-    logging.info(text)
-
-    old = 'ExecStart=/usr/bin/dockerd'
-    new = dockerd_cmd
-    utils.change_file(new_docker_service, old, new)
-
-    dservice_name = new_docker_service.split('/')[5]
-    return dservice_name
-
-
-# pylint: disable=R0913
-def run_nav(navpass, loop_file, mount_point, lib, run, dockerd):
-    """ Runs navencrypt commands to set up for dockerd start """
-    navlog = open(NAV_LOG, 'a')
-
-    device = utils.simple_popen(['losetup', '-f'])[0].rstrip()
-
-    if navlib.nav_prepare_loop(navpass, loop_file, device, mount_point, logfile=navlog):
-        logging.info('Nav prepare completed')
-    else:
-        logging.error('Something went wrong on nav prepare command')
-        sys.exit(1)
-
-    category = '@%s' % mount_point.split('/')[1]
-
-    if navlib.nav_encrypt(navpass, category, lib, mount_point, logfile=navlog):
-        text = 'Nav encrypt of %s complete' % lib
-        logging.info(text)
-    else:
-        logging.error('Something went wrong with the nav move command')
-        sys.exit(1)
-
-    if navlib.nav_encrypt(navpass, category, run, mount_point, logfile=navlog):
-        text = 'Nav encrypt of %s complete' % run
-        logging.info(text)
-    else:
-        logging.error('Something went wrong with the nav move command')
-        sys.exit(1)
-
-    acl_rule = 'ALLOW %s * %s' % (category, dockerd)
-
-    if navlib.nav_acl_add(navpass, acl_rule, logfile=navlog):
-        text = 'Nav acl rule added %s' % acl_rule
-        logging.info(text)
-    else:
-        logging.error('Something went wrong with adding the acl rule')
-        sys.exit(1)
-
-    navlog.close()
-
-    return device, category
-
-
-def get_avail_ip():
-    """ Gets available ip for bridge set up """
-    cmdlist = ['cat', '/proc/net/dev']
-    output, errors = utils.simple_popen(cmdlist)
-    text = 'Devices:\n\tOutput: %s\nErrors: %s' % (output, errors)
-    logging.debug(text)
-
-    tmp = output.split()
-    docker_dev = []
-    for item in tmp:
-        if 'docker' in item:
-            docker_dev.append(item.rstrip(':'))
-
-    used_ips = []
-    for dev in docker_dev:
-        used_ips.append(netifaces.ifaddresses(dev)[2][0]['addr'])
-
-    for avail_ip in BRIDGE_IPS:
-        if avail_ip not in used_ips:
-            return avail_ip
-
-
-def set_bridge(rand_int):
-    """ Sets the bridge interface for dockerd """
-    avail_ip = get_avail_ip()
-    docker_bridge = 'docker%d' % rand_int
-
-    cmdlist = ['brctl', 'addbr', docker_bridge]
-    output, errors = utils.simple_popen(cmdlist)
-    text = 'brctl command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
-    logging.debug(text)
-
-    cmdlist = ['ip', 'addr', 'add', '%s/24' % avail_ip, 'dev', docker_bridge]
-    output, errors = utils.simple_popen(cmdlist)
-    text = 'ip command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
-    logging.debug(text)
-
-    cmdlist = ['ip', 'link', 'set', 'dev', docker_bridge, 'up']
-    output, errors = utils.simple_popen(cmdlist)
-    text = 'ip command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
-    logging.debug(text)
-
-    text = 'Created bridge: %s' % docker_bridge
-    logging.info(text)
-
-    return docker_bridge
-
-
-def start_vnc(docker, vncpass, rand_int):
-    """ Starts up the docker-vnc image """
-    image = 'wallace123/docker-vnc'
-    container = 'docker-vnc-%s' % rand_int
-    docker_cmd = '%s run -d -p 5900 --name %s -e VNCPASS=%s '\
-                 '-v /etc/hosts:/etc/hosts:ro '\
-                 '-v /etc/resolv.conf:/etc/resolv.conf:ro %s' % (docker, container, vncpass, image)
-    cmdlist = docker_cmd.split()
-    logging.info('Starting docker-vnc image')
-    output, errors = utils.simple_popen(cmdlist)
-    text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
-    logging.debug(text)
-
-    docker_cmd = '%s port docker-vnc-%s' % (docker, rand_int)
-    cmdlist = docker_cmd.split()
-    output, errors = utils.simple_popen(cmdlist)
-    text = 'Docker command:\n\tOutput: %s\n\tErrors: %s' % (output, errors)
-    logging.debug(text)
-    port_output = output.split(':')
-    port = port_output[1].rstrip()
-    text = 'VNC port: %s' % port
-    logging.info(text)
-
-    return container, port
 
 
 # pylint: disable=R0913
@@ -331,49 +149,37 @@ def main():
 
     logging.info('Prereqs complete')
 
-    text = 'Ready to set up navencrypt volumes for %s' % image
-    logging.info(text)
-
     rand_int = utils.rand_n_digits(9)
-    mount_point = create_mount_point(rand_int)
-    docker_lib, docker_run = create_lib_run_dirs(rand_int)
-    loop_file = create_loop_file(rand_int)
-    docker_sock = 'unix://%s/docker-%s.sock' % (docker_lib, rand_int)
-    docker_pid = '%s/docker-%s.pid' % (docker_run, rand_int)
-    docker_bridge = set_bridge(rand_int)
-    dockerd = copy_dockerd(rand_int)
-    docker = '/usr/bin/docker -H %s ' % docker_sock
-    device, category = run_nav(navpass, loop_file, mount_point, docker_lib, docker_run, dockerd)
-    dockerd_cmd = 'ExecStart=%s -D --bridge=%s --exec-root=%s -g %s -H %s '\
-                  '-p %s --storage-driver=devicemapper --iptables=false '\
-                  '--ip-masq=false' % (dockerd, docker_bridge, docker_run, docker_lib, docker_sock,
-                                       docker_pid)
-
-    logging.info('Starting docker daemon')
-    dservice = create_dockerd_service(rand_int, dockerd_cmd)
-    utils.start_enable_service(dservice)
-
-    sleep(5) # Sleep so dockerd can finish starting
-    logging.info('Check dockerd')
 
     if image == 'wallace123/docker-vnc':
         vncpass = set_vnc_passwd()
-        container, port = start_vnc(docker, vncpass, rand_int)
+        logging.info('Initializing DockerVNC instance')
+        vnc = containers.DockerVNC(rand_int, navpass, vncpass)
+        logging.info('Starting dockerd')
+        utils.start_enable_service(vnc.docker_service_name)
+        sleep(5) # Wait for dockerd to start
+        logging.info('Starting VNC container')
+        port = vnc.run()
+        text = 'VNC container started on port: %s' % str(port)
+        logging.info(text)
         utils.set_firewall(port)
+        json_file = vnc.docker_service_name + '_cleanup.json'
+        data = {'container': 'docker-vnc', 'docker': vnc.docker,
+                'dservice': vnc.docker_service_name, 'device': vnc.device,
+                'docker_lib': vnc.docker_lib, 'docker_run': vnc.docker_run,
+                'mount_point': vnc.mount, 'dockerd': vnc.dockerd,
+                'docker_bridge': vnc.bridge, 'category': vnc.category,
+                'port': port, 'loop_file': vnc.loop_file,
+                'dservice_path': vnc.docker_service_full_path}
     elif image == 'wallace123/docker-jabber':
-        jabber_ip, user1, pass1, user2, pass2 = set_jabber_vars()
-        container, port = start_jabber(docker, jabber_ip, user1, pass1, user2, pass2, rand_int)
-        utils.set_firewall(port)
+        pass
+        #jabber_ip, user1, pass1, user2, pass2 = set_jabber_vars()
+        #container, port = start_jabber(docker, jabber_ip, user1, pass1, user2, pass2, rand_int)
+        #utils.set_firewall(port)
     else:
         logging.error('Unsupported image')
 
     # Set up dictionary for pickling so we can delete it with cleanup.py
-    json_file = dservice.split('.')[0] + '_cleanup.json'
-    data = {'container': container, 'docker': docker, 'dservice': dservice,
-            'device': device, 'docker_lib': docker_lib, 'docker_run': docker_run,
-            'mount_point': mount_point, 'dockerd': dockerd, 'docker_bridge': docker_bridge,
-            'category': category, 'port': port, 'loop_file': loop_file}
-
     output = open(json_file, 'wb')
     json.dump(data, output)
     output.close()

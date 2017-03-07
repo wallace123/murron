@@ -1,10 +1,12 @@
 """ Module which contains container classes """
 
+import sys
 import netifaces  # Need to pip install netifaces
 
 # Import submodules
 # pylint: disable=W0403
 from pyutils import utils
+from navlib import navlib
 
 # Globals
 BRIDGE_IPS = ['172.18.1.1', '172.18.2.1', '172.18.3.1', '172.18.4.1',
@@ -13,8 +15,9 @@ BRIDGE_IPS = ['172.18.1.1', '172.18.2.1', '172.18.3.1', '172.18.4.1',
 # pylint: disable=R0902
 class ContainerBase(object):
     """ Base class for docker nav containers """
-    def __init__(self, rand_int):
+    def __init__(self, rand_int, navpass):
         self.rand_int = rand_int
+        self.navpass = navpass
         self.docker_lib = self.create_lib()
         self.docker_run = self.create_run()
         self.loop_file = self.create_loop()
@@ -24,6 +27,9 @@ class ContainerBase(object):
         self.docker_service_full_path = self.create_dservice()
         self.docker_service_name = self.get_dservice_name()
         self.docker = '/usr/bin/docker -H unix://%s/docker.sock' % self.docker_lib
+
+        # Navencrypt setup
+        self.device, self.category = self.run_nav()
 
     def create_lib(self):
         """ Creates the docker lib directory """
@@ -85,6 +91,7 @@ class ContainerBase(object):
         for avail_ip in BRIDGE_IPS:
             if avail_ip not in used_ips:
                 bridge_ip = avail_ip
+                break
 
         # Create the bridge with the available IP
         docker_bridge = 'docker%d' % self.rand_int
@@ -131,11 +138,45 @@ class ContainerBase(object):
         """ Get the service name for starting and stopping service """
         return self.docker_service_full_path.split('/')[5].split('.')[0]
 
+    def run_nav(self):
+        """ Sets up navencrypt items """
+        device = utils.simple_popen(['losetup', '-f'])[0].rstrip()
+
+        if navlib.nav_prepare_loop(self.navpass, self.loop_file, device, self.mount):
+            print 'Nav prepare completed'
+        else:
+            print 'Something went wrong on nav prepare command'
+            sys.exit(1)
+
+        category = '@%s' % self.mount.split('/')[1]
+
+        if navlib.nav_encrypt(self.navpass, category, self.docker_lib, self.mount):
+            print 'Nav encrypt of %s complete' % self.docker_lib
+        else:
+            print 'Something went wrong with the nav move command'
+            sys.exit(1)
+
+        if navlib.nav_encrypt(self.navpass, category, self.docker_run, self.mount):
+            print 'Nav encrypt of %s complete' % self.docker_run
+        else:
+            print 'Something went wrong with the nav move command'
+            sys.exit(1)
+
+        acl_rule = 'ALLOW %s * %s' % (category, self.dockerd)
+
+        if navlib.nav_acl_add(self.navpass, acl_rule):
+            print 'Nav acl rule added %s' % acl_rule
+        else:
+            print 'Something went wrong with adding the acl rule'
+            sys.exit(1)
+
+        return device, category
+
 
 class DockerVNC(ContainerBase):
     """ Class for wallace123/docker-vnc containers """
-    def __init__(self, rand_int, vncpass):
-        ContainerBase.__init__(self, self.rand_int)
+    def __init__(self, rand_int, navpass, vncpass):
+        ContainerBase.__init__(self, rand_int, navpass)
         self.vncpass = vncpass
 
     def run(self):
