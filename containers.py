@@ -123,6 +123,7 @@ class ContainerBase(object):
         utils.simple_popen(cmdlist)
 
         text = 'Created bridge %s with ip %s' % (docker_bridge, bridge_ip)
+        logging.info(text)
 
         return docker_bridge
 
@@ -256,7 +257,7 @@ class DockerJabber(ContainerBase):
         utils.simple_popen(cmdlist)
 
         # Get the port
-        docker_cmd = '%s port docker-jabber-%s' % (self.docker, self.rand_int)
+        docker_cmd = '%s port docker-jabber' % self.docker
         cmdlist = docker_cmd.split()
         # pylint: disable=W0612
         output, errors = utils.simple_popen(cmdlist)

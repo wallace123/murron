@@ -52,13 +52,11 @@ for jsn in json_list:
         logging.info('navencrypt prepare -f succeeded')
     else:
         logging.error('navencrypt prepare -f failed')
-        sys.exit(1)
 
     if navlib.nav_acl_del(passwd, data['category'], logfile=navlog):
         logging.info('acl removed')
     else:
         logging.error('acl remove failed')
-        sys.exit(1)
 
     # Remove docker items
     cmdlist = ['rm', '-rf', data['docker_lib']]
