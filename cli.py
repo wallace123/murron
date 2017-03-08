@@ -6,9 +6,9 @@ import logging
 import json
 from time import sleep
 
-# Import submodules
 # pylint: disable=W0403
 import containers
+# Import submodules
 from navlib import navlib
 from pyutils import utils, loggerinitializer
 
