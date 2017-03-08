@@ -28,8 +28,9 @@ NUM_LOOPS = 20
 
 
 # Global functions
-def setup_vnc(rand_int, navpass, vncpass, navlog):
+def setup_vnc(rand_int, navpass, navlog, data_dict):
     """ Does the setup and starting of the VNC container """
+    vncpass = data_dict['vncpass']
 
     logging.info('Initializing DockerVNC instance')
     vnc = containers.DockerVNC(rand_int, navpass, navlog, vncpass)
@@ -57,8 +58,39 @@ def setup_vnc(rand_int, navpass, vncpass, navlog):
     return json.dumps(data)
 
 
-def setup_jabber():
-    pass
+def setup_jabber(rand_int, navpass, navlog, data_dict):
+    """ Does the setup and starting of Jabber container """
+    jabber_ip = data_dict['jabber_ip']
+    user1 = data_dict['user1']
+    pass1 = data_dict['pass1']
+    user2 = data_dict['user2']
+    pass2 = data_dict['pass2']
+
+    logging.info('Initializing DockerJabber instance')
+    jabber = containers.DockerJabber(rand_int, navpass, navlog, jabber_ip,
+                                     user1, pass1, user2, pass2)
+
+    logging.info('Starting dockerd')
+    utils.start_enable_service(jabber.docker_service_name)
+    sleep(5) # Wait for dockerd to start
+
+    logging.info('Starting jabber container')
+    port = jabber.run()
+    text = 'Jabber Container started on port: %s' % str(port)
+    logging.info(text)
+
+    logging.info('Opening firewall port')
+    utils.set_firewall(port)
+
+    data = {'container': 'docker-jabber', 'docker': jabber.docker,
+            'dservice': jabber.docker_service_name, 'device': jabber.device,
+            'docker_lib': jabber.docker_lib, 'docker_run': jabber.docker_run,
+            'mount_point': jabber.mount, 'dockerd': jabber.dockerd,
+            'docker_bridge': jabber.bridge, 'category': jabber.category,
+            'port': port, 'loop_file': jabber.loop_file,
+            'dservice_path': jabber.docker_service_full_path}
+
+    return json.dumps(data)
 
 
 # Handler and Server classes
@@ -70,12 +102,18 @@ class TCPHandler(SocketServer.BaseRequestHandler):
         data = self.request.recv(1024)
         recv_dict = json.loads(data)
 
+        text = '%s wrote: %s' % (self.client_address[0], recv_dict)
+        logging.info(text)
+
         if recv_dict['action'] == 'start':
             if recv_dict['image'] == 'wallace123/docker-vnc':
-                data = setup_vnc(recv_dict['rand_int'], self.server.navpass,
-                                 recv_dict['vncpass'], self.server.navlog)
+                logging.info('Starting VNC image')
+                cleanup_data = setup_vnc(recv_dict['rand_int'], self.server.navpass,
+                                         self.server.navlog, recv_dict)
             elif recv_dict['image'] == 'wallace123/docker-jabber':
-                setup_jabber()
+                logging.info('Starting Jabber image')
+                cleanup_data = setup_jabber(recv_dict['rand_int'], self.server.navpass,
+                                            self.server.navlog, recv_dict)
             else:
                 logging.error('Did not receive supported image')
         elif recv_dict['action'] == 'stop':
@@ -83,11 +121,7 @@ class TCPHandler(SocketServer.BaseRequestHandler):
         else:
             logging.error('Did not receive supported action')
 
-        text = '%s wrote: %s' % (self.client_address[0], recv_dict)
-        logging.info(text)
-
-        response = data
-        self.request.send(response)
+        self.request.send(cleanup_data)
 
 
 class ForkingNavServer(SocketServer.ForkingMixIn, SocketServer.TCPServer):
