@@ -93,6 +93,68 @@ def setup_jabber(rand_int, navpass, navlog, data_dict):
     return json.dumps(data)
 
 
+def cleanup(passwd, navlog, data_dict):
+    """ Receives a json dictionary and cleans up items """
+    docker_cmd = data_dict['docker'].split()
+    cmdlist = [docker_cmd[0], docker_cmd[1], docker_cmd[2], 'stop', data_dict['container']]
+    utils.simple_popen(cmdlist)
+    logging.info('container stopped')
+
+    # Stop and disable the service
+    utils.stop_disable_service(data_dict['dservice'].split('.')[0])
+    logging.info('service disabled')
+
+    # Remove service
+    cmdlist = ['rm', '-rf', data_dict['dservice_path']]
+    utils.simple_popen(cmdlist)
+    logging.info('service removed')
+
+    # Remove navencrypt items
+    if navlib.nav_prepare_loop_del(passwd, data_dict['device'], logfile=navlog):
+        logging.info('navencrypt prepare -f succeeded')
+    else:
+        logging.error('navencrypt prepare -f failed. Need to inspect manually')
+
+    if navlib.nav_acl_del(passwd, data_dict['category'], logfile=navlog):
+        logging.info('acl removed')
+    else:
+        logging.error('acl remove failed. Need to remove manually')
+
+    # Remove docker items
+    cmdlist = ['rm', '-rf', data_dict['docker_lib']]
+    utils.simple_popen(cmdlist)
+    logging.info('docker_lib removed')
+
+    cmdlist = ['rm', '-rf', data_dict['docker_run']]
+    utils.simple_popen(cmdlist)
+    logging.info('docker_run removed')
+
+    cmdlist = ['rm', '-rf', data_dict['mount_point']]
+    utils.simple_popen(cmdlist)
+    logging.info('mount_point removed')
+
+    cmdlist = ['rm', '-rf', data_dict['loop_file']]
+    utils.simple_popen(cmdlist)
+    logging.info('loop_file removed')
+
+    cmdlist = ['rm', '-rf', data_dict['dockerd']]
+    utils.simple_popen(cmdlist)
+    logging.info('dockerd removed')
+
+    cmdlist = ['ip', 'link', 'set', data_dict['docker_bridge'], 'down']
+    utils.simple_popen(cmdlist)
+    logging.info('bridge down')
+
+    cmdlist = ['brctl', 'delbr', data_dict['docker_bridge']]
+    utils.simple_popen(cmdlist)
+    logging.info('bridge deleted')
+
+    utils.remove_firewall(data_dict['port'])
+    logging.info('Port removed')
+
+    return 'Cleanup complete'
+
+
 # Handler and Server classes
 class TCPHandler(SocketServer.BaseRequestHandler):
     """ Handles the creation of the docker daemon and container """
@@ -108,20 +170,22 @@ class TCPHandler(SocketServer.BaseRequestHandler):
         if recv_dict['action'] == 'start':
             if recv_dict['image'] == 'wallace123/docker-vnc':
                 logging.info('Starting VNC image')
-                cleanup_data = setup_vnc(recv_dict['rand_int'], self.server.navpass,
-                                         self.server.navlog, recv_dict)
+                response = setup_vnc(recv_dict['rand_int'], self.server.navpass,
+                                     self.server.navlog, recv_dict)
             elif recv_dict['image'] == 'wallace123/docker-jabber':
                 logging.info('Starting Jabber image')
-                cleanup_data = setup_jabber(recv_dict['rand_int'], self.server.navpass,
-                                            self.server.navlog, recv_dict)
+                response = setup_jabber(recv_dict['rand_int'], self.server.navpass,
+                                        self.server.navlog, recv_dict)
             else:
                 logging.error('Did not receive supported image')
         elif recv_dict['action'] == 'stop':
-            pass
+            logging.info('Starting cleanup actions')
+            response = cleanup(self.server.navpass, self.server.navlog, recv_dict)
         else:
             logging.error('Did not receive supported action')
+            response = 'Did not receive support action'
 
-        self.request.send(cleanup_data)
+        self.request.send(response)
 
 
 class ForkingNavServer(SocketServer.ForkingMixIn, SocketServer.TCPServer):
